@@ -3,17 +3,14 @@ from typing import (
     Optional,
     Any,
     TypeVar,
-    Generator as GeneratorType,
     Union,
 )
 import logging
 from adalflow.core.types import ModelType, GeneratorOutput
 
 
-from adalflow.core.types import (
-    EmbedderOutput,
-    CompletionUsage,
-)
+from adalflow.core.types import EmbedderOutput, CompletionUsage, Embedding
+from adalflow.core import ModelClient
 
 from mistralai import Mistral
 from mistralai.models import ChatCompletionResponse, CompletionEvent, EmbeddingResponse
@@ -31,28 +28,38 @@ def parse_stream_response(completion: CompletionEvent) -> str:
     return completion.data.choices[0].delta.content
 
 
-def handle_streaming_response(generator: GeneratorType):
+def handle_streaming_response(event_stream: list[CompletionEvent]) -> str:
     r"""Handle the streaming response."""
-    for completion in generator:
+    full_raw_response = ""
+    for completion in event_stream:
         log.debug(f"Raw chunk completion: {completion}")
-        parsed_content = parse_stream_response(completion)
-        yield parsed_content
+        raw_response = parse_stream_response(completion)
+        full_raw_response += raw_response
+    return full_raw_response
 
 
-def MistralClient(ModelClient):
+def get_event_stream_usage(completion: list[CompletionEvent]) -> dict[str, int]:
+    usage_dict = dict(completion_tokens=0, prompt_tokens=0, total_tokens=0)
+    usage = completion[-1].data.usage
+    usage_dict["completion_tokens"] = usage.completion_tokens
+    usage_dict["prompt_tokens"] = usage.prompt_tokens
+    usage_dict["total_tokens"] = usage.total_tokens
+    return usage_dict
+
+
+class MistralClient(ModelClient):
 
     def __init__(
         self, model_name: Optional[str] = None, api_key: Optional[str] = None
     ) -> None:
         super().__init__()
         self._model_name = model_name
-        self.api_key = api_key
+        self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
         self.sync_client = self.init_sync_client()
         self.async_client = None
 
     def init_sync_client(self):
-        api_key = self.api_key or os.getenv("MISTRAL_API_KEY")
-        if not api_key:
+        if not self.api_key:
             raise ValueError("Environment variable MISTRAL_API_KEY must be set")
         return Mistral(api_key=self.api_key)
 
@@ -77,8 +84,13 @@ def MistralClient(ModelClient):
             ]
         return api_kwargs
 
-    def parse_embedding_response(self, response: Any) -> EmbedderOutput:
-        pass
+    def parse_embedding_response(self, response: EmbeddingResponse) -> EmbedderOutput:
+        try:
+            embeddings = Embedding(embedding=response.data[0].embedding, index=0)
+            return EmbedderOutput(data=[embeddings])
+        except Exception as e:
+            log.error(f"Error parsing the embedding response: {e}")
+            return EmbedderOutput(data=[], error=str(e), raw_response=response)
 
     def parse_chat_completion(
         self, completion: Union[ChatCompletionResponse, EventStream]
@@ -87,23 +99,25 @@ def MistralClient(ModelClient):
         if completion is not None:
             try:
                 # Handle streamng
-                if isinstance(completion, GeneratorType):  # streaming
+                if isinstance(completion, EventStream):  # streaming
+                    # convert comlpetion to list to make it reusable. EventStream is a GeneratorType
+                    completion: list[CompletionEvent] = list(completion)
                     raw_response = handle_streaming_response(completion)
                 else:
                     raw_response = completion.choices[0].message.content
             except Exception as e:
                 log.error(f"Error parsing the completion: {e}")
-                return GeneratorOutput(data=None, error=str(e), raw_response=completion)
-            usage = self.track_completion_usage(completion)
+                return GeneratorOutput(
+                    data=None, error=str(e), raw_response=str(completion)
+                )
+            usage: CompletionUsage = self.track_completion_usage(completion)
             return GeneratorOutput(
                 data=None, error=None, raw_response=raw_response, usage=usage
             )
 
     def track_completion_usage(
         self,
-        completion: Union[
-            ChatCompletionResponse, GeneratorType[CompletionEvent, None, None]
-        ],
+        completion: Union[ChatCompletionResponse, list[CompletionEvent]],
     ) -> CompletionUsage:
         if isinstance(completion, ChatCompletionResponse):
             usage: CompletionUsage = CompletionUsage(
@@ -113,9 +127,9 @@ def MistralClient(ModelClient):
             )
             return usage
         else:
-            raise NotImplementedError(
-                "streaming completion usage tracking is not implemented"
-            )
+            event_stream_usage: dict = get_event_stream_usage(completion)
+            usage: CompletionUsage = CompletionUsage(**event_stream_usage)
+            return usage
 
     def call(
         self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED
