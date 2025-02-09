@@ -14,7 +14,7 @@ from adalflow.core import ModelClient
 
 from mistralai import Mistral
 from mistralai.models import ChatCompletionResponse, CompletionEvent, EmbeddingResponse
-from mistralai.utils.eventstreaming import EventStream
+from mistralai.utils.eventstreaming import EventStream, EventStreamAsync
 import os
 
 
@@ -145,6 +145,27 @@ class MistralClient(ModelClient):
                 return self.sync_client.chat.stream(**api_kwargs)
             else:
                 return self.sync_client.chat.complete(**api_kwargs)
+
+    async def acall(
+        self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED
+    ) -> Optional[
+        Union[
+            EventStreamAsync[CompletionEvent], ChatCompletionResponse, EmbeddingResponse
+        ]
+    ]:
+        if "model" not in api_kwargs:
+            raise ValueError("model must be specified")
+        if model_type == ModelType.EMBEDDER:
+            # return await self.sync_client.embeddings.create(**api_kwargs)
+            return await self.sync_client.embeddings.create(**api_kwargs)
+        if model_type == ModelType.LLM:
+            # "stream" as an api_kwargs for consistency with other model clients
+            if api_kwargs["stream"]:
+                log.debug("streaming call")
+                rslt = await self.sync_client.chat.stream_async(**api_kwargs)
+                return rslt
+            else:
+                return await self.sync_client.chat.complete_async(**api_kwargs)
 
     @classmethod
     def from_dict(cls: type[T], data: Dict[str, Any]) -> T:
