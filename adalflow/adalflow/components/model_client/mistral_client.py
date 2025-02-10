@@ -140,7 +140,7 @@ class MistralClient(ModelClient):
             return self.sync_client.embeddings.create(**api_kwargs)
         if model_type == ModelType.LLM:
             # "stream" as an api_kwargs for consistency with other model clients
-            if "stream" in api_kwargs:
+            if api_kwargs.get("stream"):
                 log.debug("streaming call")
                 return self.sync_client.chat.stream(**api_kwargs)
             else:
@@ -160,7 +160,7 @@ class MistralClient(ModelClient):
             return await self.sync_client.embeddings.create(**api_kwargs)
         if model_type == ModelType.LLM:
             # "stream" as an api_kwargs for consistency with other model clients
-            if api_kwargs["stream"]:
+            if api_kwargs.get("stream"):
                 log.debug("streaming call")
                 rslt = await self.sync_client.chat.stream_async(**api_kwargs)
                 return rslt
