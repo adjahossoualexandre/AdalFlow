@@ -57,6 +57,7 @@ class OptionalPackages(Enum):
     BOTO3 = ("boto3", "Please install boto3 with: pip install boto3")
     # modeling library
     TORCH = ("torch", "Please install torch with: pip install torch")
+    MISTRALAI = ("mistralai", "Please install mistralai with: pip install mistralai")
 
     # Grouping all Azure-related packages under one entry
     AZURE = (

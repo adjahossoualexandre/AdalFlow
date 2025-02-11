@@ -52,6 +52,10 @@ OllamaClient = LazyImport(
     "adalflow.components.model_client.ollama_client.OllamaClient",
     OptionalPackages.OLLAMA,
 )
+MistralClient = LazyImport(
+    "adalflow.components.model_client.mistral_client.MistralClient",
+    OptionalPackages.MISTRALAI,
+)
 get_first_message_content = LazyImport(
     "adalflow.components.model_client.openai_client.get_first_message_content",
     OptionalPackages.OPENAI,

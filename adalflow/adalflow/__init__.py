@@ -61,6 +61,7 @@ from adalflow.components.model_client import (
     AnthropicAPIClient,
     CohereAPIClient,
     BedrockAPIClient,
+    MistralClient,
 )
 
 __all__ = [
@@ -119,4 +120,5 @@ __all__ = [
     "AnthropicAPIClient",
     "CohereAPIClient",
     "BedrockAPIClient",
+    "MistralClient",
 ]
